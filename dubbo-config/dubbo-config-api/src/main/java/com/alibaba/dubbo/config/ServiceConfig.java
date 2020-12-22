@@ -220,17 +220,25 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
     }
 
     protected synchronized void doExport() {
+        // 不导出
         if (unexported) {
             throw new IllegalStateException("Already unexported!");
         }
+
+        // 已经导出服务
         if (exported) {
             return;
         }
         exported = true;
+
+        // 要导出的接口，如 DemoService
         if (interfaceName == null || interfaceName.length() == 0) {
             throw new IllegalStateException("<dubbo:service interface=\"\" /> interface not allow null!");
         }
+
+        // 检测 provider 是否为空，为空则新建一个，并通过系统变量为其初始化
         checkDefault();
+
         if (provider != null) {
             if (application == null) {
                 application = provider.getApplication();
@@ -238,12 +246,14 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
             if (module == null) {
                 module = provider.getModule();
             }
+            // 注册中心
             if (registries == null) {
                 registries = provider.getRegistries();
             }
             if (monitor == null) {
                 monitor = provider.getMonitor();
             }
+            // 协议
             if (protocols == null) {
                 protocols = provider.getProtocols();
             }
@@ -264,13 +274,19 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                 monitor = application.getMonitor();
             }
         }
+
+        // 泛化接口
+        // 泛接口实现方式主要用于服务器端没有 API 接口及模型类元的情况，参数及返回值中的所有 POJO 均用 Map 表示，
+        // 通常用于框架集成，比如：实现一个通用的远程服务 Mock 框架，可通过实现 GenericService 接口处理所有服务请求。
         if (ref instanceof GenericService) {
             interfaceClass = GenericService.class;
             if (StringUtils.isEmpty(generic)) {
                 generic = Boolean.TRUE.toString();
             }
         } else {
+            // 普通接口
             try {
+                // 实例化
                 interfaceClass = Class.forName(interfaceName, true, Thread.currentThread()
                         .getContextClassLoader());
             } catch (ClassNotFoundException e) {
@@ -280,6 +296,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
             checkRef();
             generic = Boolean.FALSE.toString();
         }
+
+        // 设为true，表示使用缺省代理类名，即：接口名 + Local后缀，已废弃，请使用stub
+        // https://dubbo.apache.org/zh/docs/v2.7/user/references/xml/dubbo-service/
         if (local != null) {
             if ("true".equals(local)) {
                 local = interfaceName + "Local";
@@ -294,6 +313,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                 throw new IllegalStateException("The local implementation class " + localClass.getName() + " not implement interface " + interfaceName);
             }
         }
+
+        // 设为true，表示使用缺省代理类名，即：接口名 + Stub后缀，服务接口客户端本地代理类名，用于在客户端执行本地逻辑，
+        // 如本地缓存等，该本地代理类的构造函数必须允许传入远程代理对象，构造函数如：public XxxServiceStub(XxxService xxxService)
         if (stub != null) {
             if ("true".equals(stub)) {
                 stub = interfaceName + "Stub";
