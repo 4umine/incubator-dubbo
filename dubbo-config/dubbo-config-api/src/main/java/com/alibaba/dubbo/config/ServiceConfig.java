@@ -219,6 +219,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         }
     }
 
+    /**
+     * 导出服务
+     */
     protected synchronized void doExport() {
         // 不导出
         if (unexported) {
@@ -239,6 +242,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         // 检测 provider 是否为空，为空则新建一个，并通过系统变量为其初始化
         checkDefault();
 
+        // 下面这些配置，如果 <dubbo:service> 有配置，
+        // 则 Spring 在解析 xml 的时候会自动注入相关属性。
+        // 否则从其他配置中获取指定属性
         if (provider != null) {
             if (application == null) {
                 application = provider.getApplication();
@@ -276,19 +282,18 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         }
 
         // 泛化接口
-        // 泛接口实现方式主要用于服务器端没有 API 接口及模型类元的情况，参数及返回值中的所有 POJO 均用 Map 表示，
-        // 通常用于框架集成，比如：实现一个通用的远程服务 Mock 框架，可通过实现 GenericService 接口处理所有服务请求。
         if (ref instanceof GenericService) {
+            // 泛接口实现方式主要用于服务器端没有 API 接口及模型类元的情况，参数及返回值中的所有 POJO 均用 Map 表示，
+            // 通常用于框架集成，比如：实现一个通用的远程服务 Mock 框架，可通过实现 GenericService 接口处理所有服务请求。
             interfaceClass = GenericService.class;
             if (StringUtils.isEmpty(generic)) {
                 generic = Boolean.TRUE.toString();
             }
-        } else {
-            // 普通接口
+        }
+        // 普通接口
+        else {
             try {
-                // 实例化
-                interfaceClass = Class.forName(interfaceName, true, Thread.currentThread()
-                        .getContextClassLoader());
+                interfaceClass = Class.forName(interfaceName, true, Thread.currentThread().getContextClassLoader());
             } catch (ClassNotFoundException e) {
                 throw new IllegalStateException(e.getMessage(), e);
             }
@@ -725,6 +730,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         if (provider == null) {
             provider = new ProviderConfig();
         }
+        // 设置 provider 属性
         appendProperties(provider);
     }
 

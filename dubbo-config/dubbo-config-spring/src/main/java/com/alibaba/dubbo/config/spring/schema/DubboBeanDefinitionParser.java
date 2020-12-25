@@ -22,16 +22,10 @@ import com.alibaba.dubbo.common.logger.Logger;
 import com.alibaba.dubbo.common.logger.LoggerFactory;
 import com.alibaba.dubbo.common.utils.ReflectUtils;
 import com.alibaba.dubbo.common.utils.StringUtils;
-import com.alibaba.dubbo.config.ArgumentConfig;
-import com.alibaba.dubbo.config.ConsumerConfig;
-import com.alibaba.dubbo.config.MethodConfig;
-import com.alibaba.dubbo.config.ProtocolConfig;
-import com.alibaba.dubbo.config.ProviderConfig;
-import com.alibaba.dubbo.config.RegistryConfig;
+import com.alibaba.dubbo.config.*;
 import com.alibaba.dubbo.config.spring.ReferenceBean;
 import com.alibaba.dubbo.config.spring.ServiceBean;
 import com.alibaba.dubbo.rpc.Protocol;
-
 import org.springframework.beans.PropertyValue;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
@@ -57,6 +51,8 @@ import java.util.regex.Pattern;
 /**
  * AbstractBeanDefinitionParser
  *
+ * <note>解析配置xml文件</note>
+ *
  * @export
  */
 public class DubboBeanDefinitionParser implements BeanDefinitionParser {
@@ -71,30 +67,70 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
         this.required = required;
     }
 
+    /**
+     * 过程：
+     * 1、获取 config/bean id
+     * 2、注册 BeanDefinition, id 为 beanName
+     * 3、设置 config/bean 属性
+     *
+     * <note>
+     *     这个方法就是将 dubbo 的标签解析成对应的配置类，比如
+     *     <dubbo:application name="demo-provider"/>                解析成 ApplicationConfig
+     *     <dubbo:registry address="zookeeper://127.0.0.1:2181"/>   解析成 RegistryConfig
+     *     <dubbo:protocol name="dubbo" port="20880"/>              解析成 ProtocolConfig
+     *     <dubbo:service interface="com.alibaba.dubbo.demo.DemoService" ref="demoService"/>    解析成 ServiceBean
+     *     ...
+     * </note>
+     */
     @SuppressWarnings("unchecked")
     private static BeanDefinition parse(Element element, ParserContext parserContext, Class<?> beanClass, boolean required) {
         RootBeanDefinition beanDefinition = new RootBeanDefinition();
         beanDefinition.setBeanClass(beanClass);
         beanDefinition.setLazyInit(false);
         String id = element.getAttribute("id");
+
+        /*
+         * <note>自定义 Scheme 中 id 是必须的</note>
+         * 比如 <dubbo:application name="demo-provider"/>，
+         */
         if ((id == null || id.length() == 0) && required) {
+            // generatedBeanName = "demo-provider"
             String generatedBeanName = element.getAttribute("name");
             if (generatedBeanName == null || generatedBeanName.length() == 0) {
                 if (ProtocolConfig.class.equals(beanClass)) {
+                    // 如果解析到 <dubbo:protocol>，没有指定协议名称时, 默认采用 dubbo 协议
                     generatedBeanName = "dubbo";
                 } else {
                     generatedBeanName = element.getAttribute("interface");
                 }
             }
+            // 这里 generatedBeanName 为 beanClass 名称
             if (generatedBeanName == null || generatedBeanName.length() == 0) {
                 generatedBeanName = beanClass.getName();
             }
             id = generatedBeanName;
             int counter = 2;
+            // 这里啥意思？？已经存在该 BeanDefinition, 加后缀？？
             while (parserContext.getRegistry().containsBeanDefinition(id)) {
                 id = generatedBeanName + (counter++);
             }
         }
+
+        /*
+         * 总结上面获取 id 的逻辑:
+         * 1、有 id 属性，则使用 id；
+         * 2、没有 id，取 name 属性，如果 name 存在，则 id = name；
+         * 3、name 没有，则取 interface 属性
+         * 4、都没有，则取 bean.getClass
+         *
+         * 通过上面分析，可知配置中几种标签 id 如下：
+         * <dubbo:application name="demo-provider"/>                id = "demo-provider"
+         * <dubbo:registry address="zookeeper://127.0.0.1:2181"/>   id = "com.alibaba.dubbo.config.RegistryConfig"
+         * <dubbo:protocol name="dubbo" port="20880"/>              id = "dubbo"（取 name，没有默认就 dubbo）
+         * <dubbo:service interface="com.alibaba.dubbo.demo.DemoService" ref="demoService"/> id = "com.alibaba.dubbo.demo.DemoService"
+         */
+
+        // 获取到 id 后，注册 bean
         if (id != null && id.length() > 0) {
             if (parserContext.getRegistry().containsBeanDefinition(id)) {
                 throw new IllegalStateException("Duplicate spring bean id " + id);
@@ -102,7 +138,15 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
             parserContext.getRegistry().registerBeanDefinition(id, beanDefinition);
             beanDefinition.getPropertyValues().addPropertyValue("id", id);
         }
+
+        // 协议 <dubbo:protocol/>
         if (ProtocolConfig.class.equals(beanClass)) {
+            /*
+             * 这里逻辑如下：
+             * 如果当前解析的标签是<dubbo:protocol/>, 此时 ProtocolConfig 已经注册好了，
+             * 遍历已经注册的 bean，获取他们的 protocol 属性, 如果正好是 ProtocolConfig，
+             * 那么将该 bean 中的 protocol 引用设置为 ProtocolConfig 的 id
+             */
             for (String name : parserContext.getRegistry().getBeanDefinitionNames()) {
                 BeanDefinition definition = parserContext.getRegistry().getBeanDefinition(name);
                 PropertyValue property = definition.getPropertyValues().getPropertyValue("protocol");
@@ -113,7 +157,11 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
                     }
                 }
             }
-        } else if (ServiceBean.class.equals(beanClass)) {
+        }
+        // 导出服务 <dubbo:service>
+        else if (ServiceBean.class.equals(beanClass)) {
+            // 在官网 dubbo:service 没看到 class 属性
+            // 直接指定ref 为 xxxImpl ??
             String className = element.getAttribute("class");
             if (className != null && className.length() > 0) {
                 RootBeanDefinition classDefinition = new RootBeanDefinition();
@@ -129,12 +177,30 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
         }
         Set<String> props = new HashSet<String>();
         ManagedMap parameters = null;
+
+        // 遍历 setter 方法
         for (Method setter : beanClass.getMethods()) {
             String name = setter.getName();
+
+            /*
+             * 只处理满足条件的方法，比如：
+             * public void setUsername(String username) {
+             *     ...
+             * }
+             *
+             * 三个条件
+             * 1、public
+             * 2、set 开头
+             * 3、只有一个参数
+             */
             if (name.length() > 3 && name.startsWith("set")
                     && Modifier.isPublic(setter.getModifiers())
                     && setter.getParameterTypes().length == 1) {
+
+                // set 方法入参
                 Class<?> type = setter.getParameterTypes()[0];
+
+                // 比如 setUserName, 转换为 user-name
                 String property = StringUtils.camelToSplitName(name.substring(3, 4).toLowerCase() + name.substring(4), "-");
                 props.add(property);
                 Method getter = null;
@@ -146,6 +212,8 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
                     } catch (NoSuchMethodException e2) {
                     }
                 }
+
+                // 校验下 get 方法
                 if (getter == null
                         || !Modifier.isPublic(getter.getModifiers())
                         || !type.equals(getter.getReturnType())) {
@@ -159,9 +227,11 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
                     parseArguments(id, element.getChildNodes(), beanDefinition, parserContext);
                 } else {
                     String value = element.getAttribute(property);
+                    // xml 配置有该属性
                     if (value != null) {
                         value = value.trim();
                         if (value.length() > 0) {
+                            // 处理一个配置有多个配置项的情况，比如多个配置中心，多个协议等
                             if ("registry".equals(property) && RegistryConfig.NO_AVAILABLE.equalsIgnoreCase(value)) {
                                 RegistryConfig registryConfig = new RegistryConfig();
                                 registryConfig.setAddress(RegistryConfig.NO_AVAILABLE);
@@ -175,6 +245,7 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
                             } else {
                                 Object reference;
                                 if (isPrimitive(type)) {
+                                    // 兼容
                                     if ("async".equals(property) && "false".equals(value)
                                             || "timeout".equals(property) && "0".equals(value)
                                             || "delay".equals(property) && "0".equals(value)
@@ -230,6 +301,8 @@ public class DubboBeanDefinitionParser implements BeanDefinitionParser {
                 }
             }
         }
+
+        // 处理 parameters 参数，也就是bean参数的集合
         NamedNodeMap attributes = element.getAttributes();
         int len = attributes.getLength();
         for (int i = 0; i < len; i++) {

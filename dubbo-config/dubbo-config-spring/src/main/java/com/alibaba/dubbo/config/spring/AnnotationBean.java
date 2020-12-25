@@ -134,8 +134,7 @@ public class AnnotationBean extends AbstractConfig implements DisposableBean, Be
     }
 
     @Override
-    public Object postProcessAfterInitialization(Object bean, String beanName)
-        throws BeansException {
+    public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
         if (!isMatchPackage(bean)) {
             return bean;
         }

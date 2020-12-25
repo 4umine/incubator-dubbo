@@ -89,28 +89,63 @@ public abstract class AbstractConfig implements Serializable {
         return value;
     }
 
+    /**
+     * 设置 xxxConfig 或者 xxxBean 中的原始类型（包装类型）字段
+     * 1、先从系统配置获取属性值
+     * 2、从配置文件获取属性值
+     *
+     * 以 ProtocolConfig 为例进行分析
+     */
     protected static void appendProperties(AbstractConfig config) {
         if (config == null) {
             return;
         }
-        // prefix = "dubbo.provider."
+        /*
+         * AbstractConfig 的子类分为两类：
+         * xxxConfig：以 config 结尾，
+         * xxxBean：以 Bean 结尾。
+         *
+         * 比如 ProtocolConfig, 那么 prefix = "dubbo.protocol."
+         */
         String prefix = "dubbo." + getTagName(config.getClass()) + ".";
         Method[] methods = config.getClass().getMethods();
         for (Method method : methods) {
             try {
                 String name = method.getName();
+                /*
+                 * 方法满足以下条件：
+                 * 1、set 开头
+                 * 2、public
+                 * 3、只有一个参数
+                 * 4、参数为原始类型以及包装类型和 String
+                 * 5、方法名长度大于 3
+                 *
+                 * 比如
+                 * public void setUserName(String userName) {
+                 *  ...
+                 * }
+                 */
                 if (name.length() > 3 && name.startsWith("set") && Modifier.isPublic(method.getModifiers())
                         && method.getParameterTypes().length == 1 && isPrimitive(method.getParameterTypes()[0])) {
+
+                    // 比如 setUserName, 则 property 为 user.name
                     String property = StringUtils.camelToSplitName(name.substring(3, 4).toLowerCase() + name.substring(4), ".");
 
                     String value = null;
+
+                    // 从系统配置获取
+                    // xxxConfig id 不为空
                     if (config.getId() != null && config.getId().length() > 0) {
+                        // ProtocolConfig id 默认为 dubbo
+                        // 以 setHeartbeat(Integer heartbeat) 为例，
+                        // 则 pn = "dubbo.protocol.dubbo.heartbeat"
                         String pn = prefix + config.getId() + "." + property;
                         value = System.getProperty(pn);
                         if (!StringUtils.isBlank(value)) {
                             logger.info("Use System Property " + pn + " to config dubbo");
                         }
                     }
+                    // 不加 id 获取
                     if (value == null || value.length() == 0) {
                         String pn = prefix + property;
                         value = System.getProperty(pn);
@@ -118,6 +153,10 @@ public abstract class AbstractConfig implements Serializable {
                             logger.info("Use System Property " + pn + " to config dubbo");
                         }
                     }
+
+                    // 系统配置没有
+
+                    // 获取 getter 方法
                     if (value == null || value.length() == 0) {
                         Method getter;
                         try {
@@ -130,6 +169,7 @@ public abstract class AbstractConfig implements Serializable {
                             }
                         }
                         if (getter != null) {
+                            // 调用 getter 方法看 xxxConfig 是否有值
                             if (getter.invoke(config) == null) {
                                 if (config.getId() != null && config.getId().length() > 0) {
                                     value = ConfigUtils.getProperty(prefix + config.getId() + "." + property);
@@ -296,6 +336,9 @@ public abstract class AbstractConfig implements Serializable {
                 || type == Object.class;
     }
 
+    /**
+     * 原始类型 -> 包装类型
+     */
     private static Object convertPrimitive(Class<?> type, String value) {
         if (type == char.class || type == Character.class) {
             return value.length() > 0 ? value.charAt(0) : '\0';

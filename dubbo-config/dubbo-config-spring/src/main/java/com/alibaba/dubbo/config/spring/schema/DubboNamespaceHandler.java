@@ -31,7 +31,22 @@ import org.springframework.beans.factory.xml.NamespaceHandlerSupport;
 /**
  * DubboNamespaceHandler
  *
- * @export
+ * <note>
+ * Dubbo 中的 Service 对应一个 <code>ServiceBean</code>,
+ * 服务导出过程始于 Spring 容器发布刷新事件, 也就是执行 ServiceBean 中 export() 方法,
+ * 那问题来了, ServiceBean 是什么时候实例化的？
+ *
+ * 答案的就是 Dubbo 基于 Spring 可拓展 Scheme 机制实现了一套自己的配置支持,
+ * 也就是配置文件 xml 中的 <dubbo:service></dubbo> 自定义标签,
+ * Spring 容器在启动的时候会解析配置文件, 把标签解析成对应的 BeanDefinition,
+ * 后面的流程就是正常的 bean 初始化流程了。
+ *
+ * 参考：《基于Spring可扩展Schema提供自定义配置支持(spring配置文件中 配置标签支持)》
+ * https://www.cnblogs.com/jifeng/archive/2011/09/14/2176599.html
+ *
+ * </note>
+ *
+ * @export 导出服务的关键点
  */
 public class DubboNamespaceHandler extends NamespaceHandlerSupport {
 

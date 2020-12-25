@@ -46,7 +46,14 @@ import java.util.Map;
  *
  * @export
  */
-public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean, DisposableBean, ApplicationContextAware, ApplicationListener<ContextRefreshedEvent>, BeanNameAware {
+public class ServiceBean<T> extends ServiceConfig<T> implements
+        InitializingBean, // bean 初始化时执行相应的方法
+        DisposableBean, // Spring 容器（BeanFactory/ApplicationContext）销毁时执行相应的方法
+        ApplicationContextAware, // 把 ApplicationContext 复制给当前 applicationContext 属性
+        ApplicationListener<ContextRefreshedEvent>, // 当 ApplicationContext 初始化或刷新时触发的事件，服务导出的入口
+        // （所有的Bean被成功装载，后处理Bean被检测并激活，所有Singleton Bean 被预实例化，ApplicationContext容器已就绪可用）
+        BeanNameAware // 返回当前类的 beanName
+{
 
     private static final long serialVersionUID = 213195494150089726L;
 
